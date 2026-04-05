@@ -1,4 +1,4 @@
-// 1. Initialize Data Structure (Added 'executions')
+// 1. Initialize Data Structure
 const sessionData = {
     metadata: {
         startTime: Date.now(),
@@ -9,16 +9,16 @@ const sessionData = {
         keystrokes: [],
         pastes: [],
         focusChanges: [],
-        executions: [] // NEW: Tracks every time they hit "Run"
+        executions: [] 
     },
     finalCode: ""
 };
 
-// 2. Load Monaco Editor (Pre-filled with the challenge)
+// 2. Load Monaco Editor
 require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs' }});
 require(['vs/editor/editor.main'], function() {
     const editor = monaco.editor.create(document.getElementById('editor-container'), {
-        value: '/* \nChallenge: Write a function named "reverseString" that takes a string \nand returns it reversed. \n*/\n\nfunction reverseString(str) {\n    // Write your logic here\n    \n}',
+        value: '# Challenge: Write a function named "reverse_string"\n\ndef reverse_string(s):\n    # Write your logic here\n    pass',
         language: 'python',
         theme: 'vs-dark'
     });
@@ -26,100 +26,93 @@ require(['vs/editor/editor.main'], function() {
     attachTelemetryListeners(editor);
 });
 
-// 3. Telemetry Listeners (Same as before)
+// 3. Telemetry Listeners
 function attachTelemetryListeners(editor) {
     editor.onKeyDown((e) => sessionData.events.keystrokes.push({ key: e.browserEvent.key, timestamp: Date.now() }));
     editor.onDidPaste((e) => sessionData.events.pastes.push({ timestamp: Date.now(), characterCount: editor.getModel().getValueInRange(e.range).length }));
     window.addEventListener('blur', () => sessionData.events.focusChanges.push({ state: 'lost_focus', timestamp: Date.now() }));
     window.addEventListener('focus', () => sessionData.events.focusChanges.push({ state: 'gained_focus', timestamp: Date.now() }));
 
-    // NEW: Handle "Run Code" Button
+    // Handle "Run Code" Button
     document.getElementById('run-btn').addEventListener('click', () => {
-        runUnitTests(editor.getValue());
+        runUnitTestsSecurely(editor.getValue());
     });
 
     // Handle Submit
     document.getElementById('submit-btn').addEventListener('click', () => {
         sessionData.metadata.group = document.getElementById('experiment-group').value;
-        exportData(editor.getValue()); // Or your fetch() function to the Python backend
+        exportData(editor.getValue()); 
     });
 }
 
+// 4. Secure Python Test Runner
 function runUnitTestsSecurely(userCode) {
     const consoleDiv = document.getElementById('console-output');
-    consoleDiv.innerHTML = ""; // Clear previous
-    appendLog(consoleDiv, "Running tests safely in an isolated worker...\n", "normal");
+    consoleDiv.innerHTML = ""; 
+    appendLog(consoleDiv, "Booting Python environment (this takes a second)...", "normal");
 
     let executionRecord = { timestamp: Date.now(), status: "pending", testsPassed: 0, errorMsg: null };
 
-    // 1. Create the Worker Logic (This runs in total isolation)
+    // Notice the escaped backticks (\`) around the Python code below
     const workerLogic = `
-    // 1. Import Pyodide into the background worker
-    importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
+        importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
 
-    self.onmessage = async function(e) {
-        const userCode = e.data.code;
-        
-        try {
-            // 2. Load the Python environment
-            let pyodide = await loadPyodide();
+        self.onmessage = async function(e) {
+            const userCode = e.data.code;
             
-            // 3. Define the Python unit tests to append to the user's code
-            const testRunnerCode = test_cases = [
-                ("hello", "olleh"),
-                ("cyber", "rebyc"),
-                ("12345", "54321")
-            ];
-            let passed = 0;
-            let results = [];
+            try {
+                let pyodide = await loadPyodide();
+                
+                const testRunnerCode = \`
+test_cases = [
+    ("hello", "olleh"),
+    ("cyber", "rebyc"),
+    ("12345", "54321")
+]
+passed = 0
+results = []
 
-        for input_val, expected in test_cases:
-            try:
-                actual = reverse_string(input_val)
-                if actual == expected:
-                    passed += 1
-                    results.append({"status": "PASS", "expected": expected, "got": actual})
-                else:
-                    results.append({"status": "FAIL", "expected": expected, "got": actual})
-            except Exception as ex:
-                results.append({"status": "ERROR", "expected": expected, "got": str(ex)})
+for input_val, expected in test_cases:
+    try:
+        actual = reverse_string(input_val)
+        if actual == expected:
+            passed += 1
+            results.append({"status": "PASS", "expected": expected, "got": actual})
+        else:
+            results.append({"status": "FAIL", "expected": expected, "got": actual})
+    except Exception as ex:
+        results.append({"status": "ERROR", "expected": expected, "got": str(ex)})
 
-        # Return the results back to JavaScript as a dictionary
-        {"passed": passed, "total": len(test_cases), "details": results};
-            // 4. Execute the user's code + the test runner
-            const finalCode = userCode + "\\n" + testRunnerCode;
-            
-            // runPythonAsync runs the code and returns the last evaluated expression
-            let resultProxy = await pyodide.runPythonAsync(finalCode);
-            
-            // Convert Python dictionary back to JavaScript object
-            let result = resultProxy.toJs({dict_converter: Object.fromEntries});
-            
-            self.postMessage({ success: true, data: result });
-            
-        } catch (err) {
-            // Catch Python SyntaxErrors or IndentationErrors
-            self.postMessage({ success: false, error: err.message });
-        }
-    };
-`;
+{"passed": passed, "total": len(test_cases), "details": results}
+\`;
+                
+                const finalCode = userCode + "\\n" + testRunnerCode;
+                let resultProxy = await pyodide.runPythonAsync(finalCode);
+                let result = resultProxy.toJs({dict_converter: Object.fromEntries});
+                
+                // Send the exact properties the listener expects
+                self.postMessage({ success: true, passed: result.passed, total: result.total, details: result.details });
+                
+            } catch (err) {
+                self.postMessage({ success: false, error: err.message });
+            }
+        };
+    `;
 
-    // 2. Convert logic to a Blob and boot the Worker
     const blob = new Blob([workerLogic], { type: 'application/javascript' });
     const worker = new Worker(URL.createObjectURL(blob));
 
-    // 3. Set a Timeout (The Anti-Infinite-Loop Defense)
+    // Increased timeout to 5 seconds because Pyodide can take 1-2 seconds to load on first click
     const timeout = setTimeout(() => {
-        worker.terminate(); // Kill the worker forcefully
+        worker.terminate(); 
         executionRecord.status = "timeout";
         executionRecord.errorMsg = "Execution timed out (Possible infinite loop).";
         appendLog(consoleDiv, "[ERROR] Execution timed out.", "fail");
         sessionData.events.executions.push(executionRecord);
-    }, 2000); // 2-second hard limit
+    }, 5000); 
 
-    // 4. Handle messages coming back from the isolated worker
     worker.onmessage = function(e) {
-        clearTimeout(timeout); // They finished before the timeout
+        clearTimeout(timeout); 
         const data = e.data;
 
         if (data.success) {
@@ -127,32 +120,56 @@ function runUnitTestsSecurely(userCode) {
             executionRecord.testsPassed = data.passed;
             data.details.forEach(res => {
                 const colorClass = res.status === "PASS" ? "pass" : "fail";
-                appendLog(consoleDiv, `[${res.status}] Test ${res.test}: expected "${res.expected}", got "${res.got}"`, colorClass);
+                appendLog(consoleDiv, `[\${res.status}] Test \${res.test}: expected "\${res.expected}", got "\${res.got}"`, colorClass);
             });
-            appendLog(consoleDiv, `\nTotal: ${data.passed}/${data.total} tests passed.`, "normal");
+            appendLog(consoleDiv, `\\nTotal: \${data.passed}/\${data.total} tests passed.`, "normal");
         } else {
             executionRecord.status = "error";
             executionRecord.errorMsg = data.error;
-            appendLog(consoleDiv, `[ERROR] ${data.error}`, "fail");
+            appendLog(consoleDiv, `[ERROR] \${data.error}`, "fail");
         }
         
         sessionData.events.executions.push(executionRecord);
-        worker.terminate(); // Clean up
+        worker.terminate(); 
     };
 
-    // 5. Send the student's code to the isolated worker
     worker.postMessage({ code: userCode });
 }
 
+// 5. Safe HTML Logger
 function appendLog(container, message, typeClass) {
-    // Create a new span element
     const span = document.createElement('span');
-    
-    // Use textContent to completely neutralize XSS attacks
     span.textContent = message; 
-    
     if (typeClass) span.className = typeClass;
-    
     container.appendChild(span);
     container.appendChild(document.createElement('br'));
+}
+
+// 6. NEW: The Missing Export Function
+async function exportData(finalCodeText) {
+    sessionData.metadata.endTime = Date.now();
+    sessionData.finalCode = finalCodeText;
+
+    // Change this to your live server URL later
+    const SERVER_URL = "http://localhost:5000/api/submit-telemetry"; 
+
+    try {
+        const response = await fetch(SERVER_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(sessionData)
+        });
+
+        if (response.ok) {
+            alert("Submission complete! Data securely sent to the research server.");
+        } else {
+            console.error("Server responded with an error:", response.status);
+            alert("Failed to send data. Please check your connection.");
+        }
+    } catch (error) {
+        console.error("Network error:", error);
+        alert("Could not connect to the server. (Make sure your Flask server is running!)");
+    }
 }
