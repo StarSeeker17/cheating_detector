@@ -164,7 +164,7 @@ async function exportData(finalCodeText) {
     sessionData.finalCode = finalCodeText;
 
     // Change this to your live server URL later
-    const SERVER_URL = "http://localhost:5000/api/submit-telemetry"; 
+    const SERVER_URL = "https://timisoreanul.pythonanywhere.com/api/submit-telemetry"; 
 
     try {
         const response = await fetch(SERVER_URL, {
@@ -210,7 +210,7 @@ async function saveProgressToServer(type, isClosing = false) {
     sessionData.metadata.status = type; // "auto-save" or "final"
     sessionData.finalCode = editor.getValue(); // Grab the current code state
 
-    const SERVER_URL = "http://localhost:5000/api/submit-telemetry";
+    const SERVER_URL = "https://timisoreanul.pythonanywhere.com/api/submit-telemetry";
 
     try {
         // The 'keepalive: true' flag is CRITICAL here. 

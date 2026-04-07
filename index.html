@@ -15,7 +15,7 @@ document.getElementById('start-btn').addEventListener('click', async () => {
 
     try {
         // 2. Ask the server for a fresh token
-        const response = await fetch('http://localhost:5000/api/generate-token');
+        const response = await fetch('https://timisoreanul.pythonanywhere.com/api/generate-token');
         const data = await response.json();
         
         if (data.status === "success") {
