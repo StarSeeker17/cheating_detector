@@ -17,6 +17,7 @@ const sessionData = {
 // Grab the token from the URL (e.g., ?token=abc-123)
 const urlParams = new URLSearchParams(window.location.search);
 const userToken = urlParams.get('token');
+let editor;
 
 // If there is no token in the URL, warn the user and stop
 if (!userToken) {
@@ -29,7 +30,7 @@ if (!userToken) {
 // 2. Load Monaco Editor
 require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs' }});
 require(['vs/editor/editor.main'], function() {
-    const editor = monaco.editor.create(document.getElementById('editor-container'), {
+    editor = monaco.editor.create(document.getElementById('editor-container'), {
         value: '# Challenge: Write a function named "reverse_string"\n\ndef reverse_string(s):\n    # Write your logic here\n    pass',
         language: 'python',
         theme: 'vs-dark'
