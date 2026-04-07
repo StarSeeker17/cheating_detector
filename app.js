@@ -173,3 +173,61 @@ async function exportData(finalCodeText) {
         alert("Could not connect to the server. (Make sure your Flask server is running!)");
     }
 }
+
+// Add a status flag to your metadata
+sessionData.metadata.status = "in-progress";
+
+// 1. Periodic Auto-Save (Every 60 seconds)
+const autoSaveInterval = setInterval(() => {
+    saveProgressToServer("auto-save");
+}, 60000); // 60,000 ms = 1 minute
+
+// 2. Tab Close / Unload Event Handler
+// visibilitychange is the most reliable modern event for detecting tab closure or switching away
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        // We log the end time just in case they never come back
+        sessionData.metadata.endTime = Date.now(); 
+        saveProgressToServer("auto-save", true);
+    }
+});
+
+// 3. The Core Save Function
+async function saveProgressToServer(type, isClosing = false) {
+    sessionData.metadata.status = type; // "auto-save" or "final"
+    sessionData.finalCode = editor.getValue(); // Grab the current code state
+
+    const SERVER_URL = "http://localhost:5000/api/submit-telemetry";
+
+    try {
+        // The 'keepalive: true' flag is CRITICAL here. 
+        // It tells the browser: "Even if the tab closes, finish sending this POST request in the background."
+        await fetch(SERVER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(sessionData),
+            keepalive: isClosing 
+        });
+        
+        if (type === "auto-save" && !isClosing) {
+            console.log("Auto-save successful at " + new Date().toLocaleTimeString());
+        }
+    } catch (error) {
+        console.error("Auto-save failed:", error);
+    }
+}
+
+// 4. Update your existing Submit Button Listener
+document.getElementById('submit-btn').addEventListener('click', async () => {
+    clearInterval(autoSaveInterval); // Stop the auto-saver
+    sessionData.metadata.group = document.getElementById('experiment-group').value;
+    sessionData.metadata.endTime = Date.now();
+    
+    // Call the save function with the "final" flag
+    await saveProgressToServer("final");
+    
+    alert("Submission complete! Thank you for participating.");
+    
+    // Optional: Redirect them to a "Thank You" page so they don't click submit twice
+    // window.location.href = "thank_you.html";
+});
