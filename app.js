@@ -1,3 +1,14 @@
+// Grab the token from the URL (e.g., ?token=abc-123)
+const urlParams = new URLSearchParams(window.location.search);
+const userToken = urlParams.get('token');
+
+// If there is no token in the URL, warn the user and stop
+if (!userToken) {
+    alert("CRITICAL ERROR: No access token found in the URL. Your data will not be saved.");
+} else {
+    // Attach the token to the payload so the server can read it
+    sessionData.metadata.token = userToken;
+}
 // 1. Initialize Data Structure
 const sessionData = {
     metadata: {
