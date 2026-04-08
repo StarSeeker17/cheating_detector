@@ -21,10 +21,27 @@ let editor;
 
 // If there is no token in the URL, warn the user and stop
 if (!userToken) {
-    alert("CRITICAL ERROR: No access token found in the URL. Your data will not be saved.");
+    showToast("CRITICAL ERROR: No access token found in the URL. Your data will not be saved.", "error");
 } else {
     // Attach the token to the payload so the server can read it
     sessionData.metadata.token = userToken;
+}
+
+// NEW: Custom Toast Notification System
+function showToast(message, type = "success") {
+    const toastContainer = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerText = message;
+    
+    toastContainer.appendChild(toast);
+    
+    // Automatically remove it from the DOM after 4 seconds
+    setTimeout(() => {
+        if (toastContainer.contains(toast)) {
+            toast.remove();
+        }
+    }, 4000);
 }
 
 // 2. Load Monaco Editor
@@ -35,7 +52,12 @@ require(['vs/editor/editor.main'], function() {
         language: 'python',
         theme: 'vs-dark'
     });
-
+    // Make Monaco strictly obey the boundaries of its flexbox container
+    window.addEventListener('resize', () => {
+        if (editor) {
+            editor.layout();
+        }
+    });
     attachTelemetryListeners(editor);
 });
 
@@ -51,10 +73,40 @@ function attachTelemetryListeners(editor) {
         runUnitTestsSecurely(editor.getValue());
     });
 
-    // Handle Submit
+    // Modal DOM Elements
+    const submitModal = document.getElementById('submit-modal');
+    const btnCancel = document.getElementById('modal-cancel');
+    const btnConfirm = document.getElementById('modal-confirm');
+
+    // 1. Open the Modal when "Finish & Submit" is clicked
     document.getElementById('submit-btn').addEventListener('click', () => {
+        submitModal.classList.remove('hidden');
+    });
+
+    // 2. Close the Modal if they click "Cancel"
+    btnCancel.addEventListener('click', () => {
+        submitModal.classList.add('hidden');
+    });
+
+    // 3. Handle the Final Submission
+    btnConfirm.addEventListener('click', async (e) => {
+        const btn = e.target;
+        
+        // UI Update: Show loading state so they don't click twice
+        btn.disabled = true;
+        btn.innerText = "Uploading Data...";
+        btnCancel.disabled = true;
+
+        // Stop auto-saves and finalize metadata
+        clearInterval(autoSaveInterval); 
         sessionData.metadata.group = document.getElementById('experiment-group').value;
-        exportData(editor.getValue()); 
+        sessionData.metadata.endTime = Date.now();
+        
+        // Save to PythonAnywhere
+        await saveProgressToServer("final");
+        
+        // Redirect to the final page
+        window.location.href = "thank_you.html";
     });
 }
 
@@ -176,14 +228,14 @@ async function exportData(finalCodeText) {
         });
 
         if (response.ok) {
-            alert("Submission complete! Data securely sent to the research server.");
+            showToast("Submission complete! Data securely sent.", "success");
         } else {
             console.error("Server responded with an error:", response.status);
-            alert("Failed to send data. Please check your connection.");
+            showToast("Failed to send data. Please check your connection.", "error");
         }
     } catch (error) {
         console.error("Network error:", error);
-        alert("Could not connect to the server. (Make sure your Flask server is running!)");
+        showToast("Could not connect to the server. (Make sure your Flask server is running!)", "error");
     }
 }
 
@@ -239,7 +291,7 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
     // Call the save function with the "final" flag
     await saveProgressToServer("final");
     
-    alert("Submission complete! Thank you for participating.");
+    showToast("Submission complete! Thank you for participating.", "success");
     
     // Optional: Redirect them to a "Thank You" page so they don't click submit twice
     // window.location.href = "thank_you.html";

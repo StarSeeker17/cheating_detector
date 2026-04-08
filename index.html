@@ -1,32 +1,157 @@
-<div id="consent-form">
-    <h2>Academic Research: Coding Behavior</h2>
-    <p>By clicking start, you consent to anonymous behavioral telemetry collection.</p>
-    <p><strong>IMPORTANT: Please only take this test once. Multiple attempts ruin the scientific data.</strong></p>
-    <button id="start-btn">I Agree - Generate My Session</button>
-</div>
-
-<script>
-document.getElementById('start-btn').addEventListener('click', async () => {
-    // 1. Check if they already participated using Local Storage
-    if (localStorage.getItem('hasParticipated')) {
-        alert("You have already participated! Thank you, but we only need one submission per person.");
-        return;
-    }
-
-    try {
-        // 2. Ask the server for a fresh token
-        const response = await fetch('https://timisoreanul.pythonanywhere.com/api/generate-token');
-        const data = await response.json();
-        
-        if (data.status === "success") {
-            // 3. Flag their browser so they can't easily click it again
-            localStorage.setItem('hasParticipated', 'true');
-            
-            // 4. Redirect them to the actual test with their unique token
-            window.location.href = `challenge.html?token=${data.token}`;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academic Research: Coding Behavior</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #0f172a;       /* Deep slate background */
+            --card-bg: #1e293b;        /* Lighter slate for the card */
+            --text-main: #f8fafc;      /* Crisp white text */
+            --text-muted: #94a3b8;     /* Soft gray for descriptions */
+            --accent: #3b82f6;         /* Vibrant blue for primary actions */
+            --accent-hover: #2563eb;
+            --warning-bg: rgba(245, 158, 11, 0.1);
+            --warning-border: #f59e0b;
+            --warning-text: #fbbf24;
         }
-    } catch (error) {
-        alert("Failed to connect to the research server.");
-    }
-});
-</script>
+
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            /* Subtle radial gradient for depth */
+            background-image: radial-gradient(circle at top right, #1e293bd0, transparent 40%);
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 16px;
+            /* Soft layered shadow for elevation */
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            max-width: 460px;
+            width: 90%;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+        }
+
+        p {
+            color: var(--text-muted);
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        /* Callout box for the warning to make it pop without looking broken */
+        .warning-box {
+            background: var(--warning-bg);
+            border-left: 4px solid var(--warning-border);
+            padding: 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 24px 0;
+        }
+
+        .warning-box p {
+            color: var(--warning-text);
+            margin: 0;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        button {
+            width: 100%;
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+            margin-top: 10px;
+        }
+
+        button:hover:not(:disabled) {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(59, 130, 246, 0.3);
+        }
+
+        button:disabled {
+            background: #475569;
+            color: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="consent-form">
+        <h2>Academic Research: Coding Behavior</h2>
+        <p>By clicking start, you consent to anonymous behavioral telemetry collection as part of this Master's thesis study.</p>
+        
+        <div class="warning-box">
+            <p><strong>IMPORTANT:</strong> Please only take this test once. Multiple attempts will corrupt the scientific dataset and skew the machine learning model.</p>
+        </div>
+
+        <button id="start-btn">I Agree - Generate My Session</button>
+    </div>
+
+    <script>
+        document.getElementById('start-btn').addEventListener('click', async (e) => {
+            const btn = e.target;
+
+            // 1. Check if they already participated using Local Storage
+            if (localStorage.getItem('hasParticipated')) {
+                alert("You have already participated! Thank you, but we only need one submission per person.");
+                return;
+            }
+
+            // UI Upgrade: Disable the button and show a loading state
+            btn.disabled = true;
+            btn.innerText = "Securing connection...";
+
+            try {
+                // 2. Ask the server for a fresh token
+                const response = await fetch('https://timisoreanul.pythonanywhere.com/api/generate-token');
+                const data = await response.json();
+                
+                if (data.status === "success") {
+                    btn.innerText = "Redirecting...";
+                    // 3. Flag their browser so they can't easily click it again
+                    localStorage.setItem('hasParticipated', 'true');
+                    
+                    // 4. Redirect them to the actual test with their unique token
+                    window.location.href = `challenge.html?token=${data.token}`;
+                } else {
+                    // Reset button if the server rejected it for some reason
+                    btn.disabled = false;
+                    btn.innerText = "I Agree - Generate My Session";
+                    alert("Server error: Could not generate token.");
+                }
+            } catch (error) {
+                btn.disabled = false;
+                btn.innerText = "I Agree - Generate My Session";
+                alert("Failed to connect to the research server. Please check your internet connection.");
+            }
+        });
+    </script>
+</body>
+</html>
