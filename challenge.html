@@ -87,7 +87,10 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             overflow-y: auto;
         }
-
+        .hidden { 
+            display: none 
+            !important; 
+        }
         .panel-left h2 {
             margin-top: 0;
             color: var(--accent);
@@ -307,24 +310,20 @@
 
     <main class="workspace">
         <section class="panel-left">
-            <h2>Challenge 1: String Reversal</h2>
-            <div class="task-description">
-                <p>Write a Python function named <code>reverse_string(s)</code> that takes a string as input and returns the string reversed.</p>
-                <p><strong>Requirements:</strong></p>
-                <ul>
-                    <li>Do not use the built-in <code>[::-1]</code> slicing trick.</li>
-                    <li>Use a loop to construct the new string.</li>
-                    <li>Ensure it handles empty strings properly.</li>
-                </ul>
-                <p><em>Note: Your keystrokes and execution behaviors are being recorded for academic research.</em></p>
-            </div>
+            <h2 id="task-title">Loading Challenge...</h2>
+            
+            <div id="condition-banner" style="padding: 10px; border-radius: 6px; margin-bottom: 16px; font-weight: 600; font-size: 0.95rem;">
+                </div>
+
+            <div class="task-description" id="task-desc">
+                </div>
 
             <div class="btn-group">
                 <button id="run-btn">Run & Test Code</button>
-                <button id="submit-btn">Finish & Submit</button>
+                <button id="next-btn" style="background: var(--success); color: white;">Next Challenge ➔</button>
+                <button id="submit-btn" class="hidden" style="background: var(--accent); color: white;">Finish & Submit</button>
             </div>
         </section>
-
         <section class="panel-right">
             <div class="editor-wrapper">
                 <div id="editor-container"></div>

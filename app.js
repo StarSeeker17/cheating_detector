@@ -1,298 +1,350 @@
-// 1. Initialize Data Structure
-const sessionData = {
-    metadata: {
-        startTime: Date.now(),
-        endTime: null,
-        group: "honest"
-    },
-    events: {
-        keystrokes: [],
-        pastes: [],
-        focusChanges: [],
-        executions: [] 
-    },
-    finalCode: ""
-};
+// ==========================================
+// 1. GLOBAL SETUP & STATE MANAGEMENT
+// ==========================================
+let editor; 
 
-// Grab the token from the URL (e.g., ?token=abc-123)
+// Grab token from URL
 const urlParams = new URLSearchParams(window.location.search);
 const userToken = urlParams.get('token');
-let editor;
 
-// If there is no token in the URL, warn the user and stop
 if (!userToken) {
-    showToast("CRITICAL ERROR: No access token found in the URL. Your data will not be saved.", "error");
-} else {
-    // Attach the token to the payload so the server can read it
-    sessionData.metadata.token = userToken;
+    alert("CRITICAL ERROR: No access token found in the URL. Your data will not be saved.");
 }
 
-// NEW: Custom Toast Notification System
-function showToast(message, type = "success") {
-    const toastContainer = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.innerText = message;
-    
-    toastContainer.appendChild(toast);
-    
-    // Automatically remove it from the DOM after 4 seconds
-    setTimeout(() => {
-        if (toastContainer.contains(toast)) {
-            toast.remove();
-        }
-    }, 4000);
-}
-
-// 2. Load Monaco Editor
-require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs' }});
-require(['vs/editor/editor.main'], function() {
-    editor = monaco.editor.create(document.getElementById('editor-container'), {
-        value: '# Challenge: Write a function named "reverse_string"\n\ndef reverse_string(s):\n    # Write your logic here\n    pass',
-        language: 'python',
-        theme: 'vs-dark'
-    });
-    // Make Monaco strictly obey the boundaries of its flexbox container
-    window.addEventListener('resize', () => {
-        if (editor) {
-            editor.layout();
-        }
-    });
-    attachTelemetryListeners(editor);
-});
-
-// 3. Telemetry Listeners
-function attachTelemetryListeners(editor) {
-    editor.onKeyDown((e) => sessionData.events.keystrokes.push({ key: e.browserEvent.key, timestamp: Date.now() }));
-    editor.onDidPaste((e) => sessionData.events.pastes.push({ timestamp: Date.now(), characterCount: editor.getModel().getValueInRange(e.range).length }));
-    window.addEventListener('blur', () => sessionData.events.focusChanges.push({ state: 'lost_focus', timestamp: Date.now() }));
-    window.addEventListener('focus', () => sessionData.events.focusChanges.push({ state: 'gained_focus', timestamp: Date.now() }));
-
-    // Handle "Run Code" Button
-    document.getElementById('run-btn').addEventListener('click', () => {
-        runUnitTestsSecurely(editor.getValue());
-    });
-
-    // Modal DOM Elements
-    const submitModal = document.getElementById('submit-modal');
-    const btnCancel = document.getElementById('modal-cancel');
-    const btnConfirm = document.getElementById('modal-confirm');
-
-    // 1. Open the Modal when "Finish & Submit" is clicked
-    document.getElementById('submit-btn').addEventListener('click', () => {
-        submitModal.classList.remove('hidden');
-    });
-
-    // 2. Close the Modal if they click "Cancel"
-    btnCancel.addEventListener('click', () => {
-        submitModal.classList.add('hidden');
-    });
-
-    // 3. Handle the Final Submission
-    btnConfirm.addEventListener('click', async (e) => {
-        const btn = e.target;
-        
-        // UI Update: Show loading state so they don't click twice
-        btn.disabled = true;
-        btn.innerText = "Uploading Data...";
-        btnCancel.disabled = true;
-
-        // Stop auto-saves and finalize metadata
-        clearInterval(autoSaveInterval); 
-        sessionData.metadata.group = document.getElementById('experiment-group').value;
-        sessionData.metadata.endTime = Date.now();
-        
-        // Save to PythonAnywhere
-        await saveProgressToServer("final");
-        
-        // Redirect to the final page
-        window.location.href = "thank_you.html";
-    });
-}
-
-// 4. Secure Python Test Runner
-function runUnitTestsSecurely(userCode) {
-    const consoleDiv = document.getElementById('console-output');
-    consoleDiv.innerHTML = ""; 
-    appendLog(consoleDiv, "Booting Python environment (this takes a second)...", "normal");
-
-    let executionRecord = { timestamp: Date.now(), status: "pending", testsPassed: 0, errorMsg: null };
-
-    // Notice the escaped backticks (\`) around the Python code below
-    const workerLogic = `
-        importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
-
-        self.onmessage = async function(e) {
-            const userCode = e.data.code;
-            
-            try {
-                let pyodide = await loadPyodide();
-                
-                const testRunnerCode = \`
-test_cases = [
-    ("hello", "olleh"),
-    ("cyber", "rebyc"),
-    ("12345", "54321")
-]
+// Define the two challenges and their specific Pyodide test scripts
+const challenges = [
+    {
+        id: "task_1_reversal",
+        title: "Challenge 1: String Reversal",
+        description: `
+            <p>Write a Python function named <code>reverse_string(s)</code> that takes a string as input and returns the string reversed.</p>
+            <ul>
+                <li>Do not use the built-in <code>[::-1]</code> slicing trick.</li>
+                <li>Use a loop to construct the new string.</li>
+            </ul>`,
+        starterCode: "def reverse_string(s):\n    # Write your logic here\n    pass",
+        testCases: `
+import json
+test_cases = [("hello", "olleh"), ("cyber", "rebyc"), ("12345", "54321")]
 passed = 0
 results = []
-
-for input_val, expected in test_cases:
+for i, (input_val, expected) in enumerate(test_cases):
     try:
         actual = reverse_string(input_val)
         if actual == expected:
             passed += 1
-            results.append({"status": "PASS", "expected": expected, "got": actual})
+            results.append({"test": i + 1, "status": "PASS", "expected": expected, "got": actual})
         else:
-            results.append({"status": "FAIL", "expected": expected, "got": actual})
+            results.append({"test": i + 1, "status": "FAIL", "expected": expected, "got": actual})
     except Exception as ex:
-        results.append({"status": "ERROR", "expected": expected, "got": str(ex)})
+        results.append({"test": i + 1, "status": "ERROR", "expected": expected, "got": str(ex)})
+print(json.dumps({"passed": passed, "total": len(test_cases), "details": results}))
+`
+    },
+    {
+        id: "task_2_fizzbuzz",
+        title: "Challenge 2: FizzBuzz Logic",
+        description: `
+            <p>Write a function <code>fizzbuzz(n)</code> that returns a list of numbers from 1 to n, but:</p>
+            <ul>
+                <li>Multiples of 3 are replaced with "Fizz"</li>
+                <li>Multiples of 5 are replaced with "Buzz"</li>
+                <li>Multiples of both are replaced with "FizzBuzz"</li>
+            </ul>`,
+        starterCode: "def fizzbuzz(n):\n    # Write your logic here\n    pass",
+        testCases: `
+import json
+test_cases = [(5, [1, 2, 'Fizz', 4, 'Buzz']), (15, [1, 2, 'Fizz', 4, 'Buzz', 'Fizz', 7, 8, 'Fizz', 'Buzz', 11, 'Fizz', 13, 14, 'FizzBuzz'])]
+passed = 0
+results = []
+for i, (input_val, expected) in enumerate(test_cases):
+    try:
+        actual = fizzbuzz(input_val)
+        if actual == expected:
+            passed += 1
+            results.append({"test": i + 1, "status": "PASS", "expected": str(expected), "got": str(actual)})
+        else:
+            results.append({"test": i + 1, "status": "FAIL", "expected": str(expected), "got": str(actual)})
+    except Exception as ex:
+        results.append({"test": i + 1, "status": "ERROR", "expected": "List", "got": str(ex)})
+print(json.dumps({"passed": passed, "total": len(test_cases), "details": results}))
+`
+    }
+];
 
-{"passed": passed, "total": len(test_cases), "details": results}
-\`;
+// Randomize condition (50/50)
+const task1IsHonest = Math.random() < 0.5;
+const assignedConditions = [
+    task1IsHonest ? "HONEST" : "CHEAT",
+    task1IsHonest ? "CHEAT" : "HONEST"
+];
+
+let currentTaskIndex = 0;
+
+// Initialize the master data object
+const sessionData = {
+    metadata: { 
+        token: userToken, 
+        globalStartTime: Date.now(),
+        globalEndTime: null,
+        status: "in-progress"
+    },
+    tasks: [
+        { 
+            id: challenges[0].id, condition: assignedConditions[0], 
+            startTime: Date.now(), endTime: null, finalCode: "", 
+            events: { keystrokes: [], clicks: [], pastes: [], executions: [] } 
+        },
+        { 
+            id: challenges[1].id, condition: assignedConditions[1], 
+            startTime: null, endTime: null, finalCode: "", 
+            events: { keystrokes: [], clicks: [], pastes: [], executions: [] } 
+        }
+    ]
+};
+
+// ==========================================
+// 2. UI & EDITOR INITIALIZATION
+// ==========================================
+function loadTaskUI(index) {
+    const task = challenges[index];
+    const condition = assignedConditions[index];
+
+    document.getElementById('task-title').innerText = task.title;
+    document.getElementById('task-desc').innerHTML = task.description;
+
+    const banner = document.getElementById('condition-banner');
+    if (condition === "HONEST") {
+        banner.style.backgroundColor = "rgba(16, 185, 129, 0.2)";
+        banner.style.color = "#10b981";
+        banner.innerText = "🛡️ HONEST CONDITION: Solve this entirely from your own memory. Do not switch tabs or copy code.";
+    } else {
+        banner.style.backgroundColor = "rgba(239, 68, 68, 0.2)";
+        banner.style.color = "#ef4444";
+        banner.innerText = "🤖 CHEAT CONDITION: Solve this as fast as possible using ChatGPT, Google, or copy-pasting.";
+    }
+
+    if (editor) editor.setValue(task.starterCode);
+    document.getElementById('consoleDiv').innerHTML = "Waiting for execution...";
+
+    if (index === 0) {
+        document.getElementById('next-btn').classList.remove('hidden');
+        document.getElementById('submit-btn').classList.add('hidden');
+    } else {
+        document.getElementById('next-btn').classList.add('hidden');
+        document.getElementById('submit-btn').classList.remove('hidden');
+    }
+}
+
+require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs' }});
+require(['vs/editor/editor.main'], function() {
+    editor = monaco.editor.create(document.getElementById('editor-container'), {
+        value: "",
+        language: 'python',
+        theme: 'vs-dark',
+        automaticLayout: true
+    });
+
+    attachTelemetryListeners();
+    loadTaskUI(0); // Load first task once editor is ready
+});
+
+// Toast Notification System
+function showToast(message, type = "success") {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerText = message;
+    container.appendChild(toast);
+    setTimeout(() => { if (container.contains(toast)) toast.remove(); }, 4000);
+}
+
+function appendLog(div, msg, colorClass) {
+    const span = document.createElement('span');
+    span.className = colorClass;
+    span.innerText = msg + '\n';
+    div.appendChild(span);
+}
+
+// ==========================================
+// 3. TELEMETRY COLLECTION
+// ==========================================
+function attachTelemetryListeners() {
+    // Note: We push everything to sessionData.tasks[currentTaskIndex].events
+    
+    document.addEventListener('keydown', (e) => {
+        sessionData.tasks[currentTaskIndex].events.keystrokes.push({
+            key: e.key,
+            timestamp: Date.now()
+        });
+    });
+
+    document.addEventListener('click', (e) => {
+        sessionData.tasks[currentTaskIndex].events.clicks.push({
+            x: e.clientX, y: e.clientY,
+            target: e.target.tagName,
+            timestamp: Date.now()
+        });
+    });
+
+    document.addEventListener('paste', (e) => {
+        const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+        sessionData.tasks[currentTaskIndex].events.pastes.push({
+            length: pastedText.length,
+            content: pastedText,
+            timestamp: Date.now()
+        });
+    });
+}
+
+// ==========================================
+// 4. PYODIDE EXECUTION LOGIC
+// ==========================================
+document.getElementById('run-btn').addEventListener('click', runUnitTestsSecurely);
+
+function runUnitTestsSecurely() {
+    const consoleDiv = document.getElementById('consoleDiv');
+    consoleDiv.innerHTML = "<span class='normal'>Booting Python environment...</span>\n";
+    
+    const userCode = editor.getValue();
+    const currentTests = challenges[currentTaskIndex].testCases;
+    
+    // Record execution attempt
+    const executionRecord = { timestamp: Date.now(), codeState: userCode, status: "pending", testsPassed: 0 };
+
+    const workerCode = `
+        importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
+        self.onmessage = async function(e) {
+            try {
+                let pyodide = await loadPyodide();
+                const fullCode = e.data.userCode + "\\n" + e.data.testCode;
                 
-                const finalCode = userCode + "\\n" + testRunnerCode;
-                let resultProxy = await pyodide.runPythonAsync(finalCode);
-                let result = resultProxy.toJs({dict_converter: Object.fromEntries});
+                // Redirect Python's stdout to capture the printed JSON string
+                pyodide.runPython(\`
+import sys
+import io
+sys.stdout = io.StringIO()
+                \`);
                 
-                // Send the exact properties the listener expects
+                await pyodide.runPythonAsync(fullCode);
+                
+                // Extract the printed string
+                let stdout = pyodide.runPython("sys.stdout.getvalue()");
+                let result = JSON.parse(stdout);
+                
                 self.postMessage({ success: true, passed: result.passed, total: result.total, details: result.details });
-                
             } catch (err) {
                 self.postMessage({ success: false, error: err.message });
             }
         };
     `;
 
-    const blob = new Blob([workerLogic], { type: 'application/javascript' });
+    const blob = new Blob([workerCode], { type: "application/javascript" });
     const worker = new Worker(URL.createObjectURL(blob));
 
-    // Increased timeout to 5 seconds because Pyodide can take 1-2 seconds to load on first click
     const timeout = setTimeout(() => {
-        worker.terminate(); 
+        worker.terminate();
+        appendLog(consoleDiv, "[ERROR] Execution timed out (Infinite loop?)", "fail");
         executionRecord.status = "timeout";
-        executionRecord.errorMsg = "Execution timed out (Possible infinite loop).";
-        appendLog(consoleDiv, "[ERROR] Execution timed out.", "fail");
-        sessionData.events.executions.push(executionRecord);
-    }, 5000); 
+        sessionData.tasks[currentTaskIndex].events.executions.push(executionRecord);
+    }, 10000);
 
     worker.onmessage = function(e) {
-        clearTimeout(timeout); 
+        clearTimeout(timeout);
         const data = e.data;
+        consoleDiv.innerHTML = ""; // Clear booting text
 
         if (data.success) {
             executionRecord.status = "success";
             executionRecord.testsPassed = data.passed;
             data.details.forEach(res => {
                 const colorClass = res.status === "PASS" ? "pass" : "fail";
-                appendLog(consoleDiv, `[\${res.status}] Test \${res.test}: expected "\${res.expected}", got "\${res.got}"`, colorClass);
+                appendLog(consoleDiv, `[${res.status}] Test ${res.test}: expected "${res.expected}", got "${res.got}"`, colorClass);
             });
-            appendLog(consoleDiv, `\\nTotal: \${data.passed}/\${data.total} tests passed.`, "normal");
+            appendLog(consoleDiv, `\nTotal: ${data.passed}/${data.total} tests passed.`, "normal");
         } else {
             executionRecord.status = "error";
             executionRecord.errorMsg = data.error;
-            appendLog(consoleDiv, `[ERROR] \${data.error}`, "fail");
+            appendLog(consoleDiv, `[ERROR] ${data.error}`, "fail");
         }
         
-        sessionData.events.executions.push(executionRecord);
-        worker.terminate(); 
+        sessionData.tasks[currentTaskIndex].events.executions.push(executionRecord);
+        worker.terminate();
     };
 
-    worker.postMessage({ code: userCode });
+    worker.postMessage({ userCode: userCode, testCode: currentTests });
 }
 
-// 5. Safe HTML Logger
-function appendLog(container, message, typeClass) {
-    const span = document.createElement('span');
-    span.textContent = message; 
-    if (typeClass) span.className = typeClass;
-    container.appendChild(span);
-    container.appendChild(document.createElement('br'));
-}
+// ==========================================
+// 5. SERVER COMMUNICATION & NAVIGATION
+// ==========================================
+const SERVER_URL = "https://timisoreanul.pythonanywhere.com/api/submit-telemetry";
 
-// 6. NEW: The Missing Export Function
-async function exportData(finalCodeText) {
-    sessionData.metadata.endTime = Date.now();
-    sessionData.finalCode = finalCodeText;
-
-    // Change this to your live server URL later
-    const SERVER_URL = "https://timisoreanul.pythonanywhere.com/api/submit-telemetry"; 
-
-    try {
-        const response = await fetch(SERVER_URL, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(sessionData)
-        });
-
-        if (response.ok) {
-            showToast("Submission complete! Data securely sent.", "success");
-        } else {
-            console.error("Server responded with an error:", response.status);
-            showToast("Failed to send data. Please check your connection.", "error");
-        }
-    } catch (error) {
-        console.error("Network error:", error);
-        showToast("Could not connect to the server. (Make sure your Flask server is running!)", "error");
-    }
-}
-
-// Add a status flag to your metadata
-sessionData.metadata.status = "in-progress";
-
-// 1. Periodic Auto-Save (Every 60 seconds)
-const autoSaveInterval = setInterval(() => {
-    saveProgressToServer("auto-save");
-}, 60000); // 60,000 ms = 1 minute
-
-// 2. Tab Close / Unload Event Handler
-// visibilitychange is the most reliable modern event for detecting tab closure or switching away
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-        // We log the end time just in case they never come back
-        sessionData.metadata.endTime = Date.now(); 
-        saveProgressToServer("auto-save", true);
-    }
-});
-
-// 3. The Core Save Function
 async function saveProgressToServer(type, isClosing = false) {
-    sessionData.metadata.status = type; // "auto-save" or "final"
-    sessionData.finalCode = editor.getValue(); // Grab the current code state
-
-    const SERVER_URL = "https://timisoreanul.pythonanywhere.com/api/submit-telemetry";
+    sessionData.metadata.status = type;
+    if (editor) {
+        sessionData.tasks[currentTaskIndex].finalCode = editor.getValue();
+    }
 
     try {
-        // The 'keepalive: true' flag is CRITICAL here. 
-        // It tells the browser: "Even if the tab closes, finish sending this POST request in the background."
         await fetch(SERVER_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(sessionData),
-            keepalive: isClosing 
+            keepalive: isClosing
         });
-        
-        if (type === "auto-save" && !isClosing) {
-            console.log("Auto-save successful at " + new Date().toLocaleTimeString());
-        }
+        if (type === "auto-save" && !isClosing) console.log("Auto-save successful at " + new Date().toLocaleTimeString());
     } catch (error) {
-        console.error("Auto-save failed:", error);
+        console.error("Save failed:", error);
     }
 }
 
-// 4. Update your existing Submit Button Listener
-document.getElementById('submit-btn').addEventListener('click', async () => {
-    clearInterval(autoSaveInterval); // Stop the auto-saver
+// Auto-save loop (Every 60s)
+const autoSaveInterval = setInterval(() => saveProgressToServer("auto-save"), 60000);
+
+// Save on Tab Close
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        sessionData.metadata.globalEndTime = Date.now();
+        sessionData.tasks[currentTaskIndex].endTime = Date.now();
+        saveProgressToServer("auto-save", true);
+    }
+});
+
+// Next Challenge Button
+document.getElementById('next-btn').addEventListener('click', () => {
+    sessionData.tasks[currentTaskIndex].endTime = Date.now();
+    sessionData.tasks[currentTaskIndex].finalCode = editor.getValue();
+    
+    currentTaskIndex++;
+    sessionData.tasks[currentTaskIndex].startTime = Date.now();
+    
+    loadTaskUI(currentTaskIndex);
+    saveProgressToServer("auto-save");
+});
+
+// Submit Button (Triggers Modal)
+const submitModal = document.getElementById('submit-modal');
+const btnCancel = document.getElementById('modal-cancel');
+const btnConfirm = document.getElementById('modal-confirm');
+
+document.getElementById('submit-btn').addEventListener('click', () => submitModal.classList.remove('hidden'));
+btnCancel.addEventListener('click', () => submitModal.classList.add('hidden'));
+
+// Final Submission Confirmation
+btnConfirm.addEventListener('click', async (e) => {
+    const btn = e.target;
+    btn.disabled = true;
+    btn.innerText = "Uploading Data...";
+    btnCancel.disabled = true;
+
+    clearInterval(autoSaveInterval);
     sessionData.metadata.group = document.getElementById('experiment-group').value;
-    sessionData.metadata.endTime = Date.now();
     
-    // Call the save function with the "final" flag
+    sessionData.tasks[currentTaskIndex].endTime = Date.now();
+    sessionData.tasks[currentTaskIndex].finalCode = editor.getValue();
+    sessionData.metadata.globalEndTime = Date.now();
+    
     await saveProgressToServer("final");
-    
-    showToast("Submission complete! Thank you for participating.", "success");
-    
-    // Optional: Redirect them to a "Thank You" page so they don't click submit twice
-    // window.location.href = "thank_you.html";
+    window.location.href = "thank_you.html";
 });
