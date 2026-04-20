@@ -127,6 +127,16 @@
             // UI Upgrade: Disable the button and show a loading state
             btn.disabled = true;
             btn.innerText = "Securing connection...";
+            
+            try {
+                // This forces the browser to ask for permission right now.
+                // We don't actually care what text is on their clipboard, 
+                // we just need the domain to be whitelisted!
+                await navigator.clipboard.readText();
+            } catch (err) {
+                console.warn("Clipboard permission denied or prompt dismissed.");
+                // We don't stop the flow if they deny it, but at least we tried!
+            }
 
             try {
                 // 2. Ask the server for a fresh token

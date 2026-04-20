@@ -7,9 +7,28 @@ let editor;
 const urlParams = new URLSearchParams(window.location.search);
 const userToken = urlParams.get('token');
 
+if (localStorage.getItem('sessionCompleted') === 'true') {
+    window.location.replace("thank_you.html");
+}
+
 if (!userToken) {
     alert("CRITICAL ERROR: No access token found in the URL. Your data will not be saved.");
 }
+
+// Block Refresh and Tab Close
+const preventNavigation = (e) => {
+    e.preventDefault();
+    e.returnValue = ''; // Required by Chrome to show the warning prompt
+};
+
+window.addEventListener('beforeunload', preventNavigation);
+
+// Trap the Back/Forward Buttons
+window.history.pushState(null, null, window.location.href);
+window.onpopstate = function () {
+    window.history.pushState(null, null, window.location.href);
+    showToast("Navigation disabled during the active session.", "warning");
+};
 
 // Define the two challenges and their specific Pyodide test scripts
 const challenges = [
@@ -93,12 +112,12 @@ const sessionData = {
         { 
             id: challenges[0].id, condition: assignedConditions[0], 
             startTime: Date.now(), endTime: null, finalCode: "", 
-            events: { keystrokes: [], clicks: [], pastes: [], executions: [] } 
+            events: { keystrokes: [], clicks: [], pastes: [], executions: [], focusEvents: [] } 
         },
         { 
             id: challenges[1].id, condition: assignedConditions[1], 
             startTime: null, endTime: null, finalCode: "", 
-            events: { keystrokes: [], clicks: [], pastes: [], executions: [] } 
+            events: { keystrokes: [], clicks: [], pastes: [], executions: [], focusEvents: [] } 
         }
     ]
 };
@@ -147,6 +166,22 @@ require(['vs/editor/editor.main'], function() {
 
     attachTelemetryListeners();
     loadTaskUI(0); // Load first task once editor is ready
+
+    startGlobalTimer();
+
+    editor.onDidPaste((e) => {
+        // 'e.range' contains the exact coordinates of the newly pasted text.
+        // We use the editor's model to grab the actual string from those coordinates.
+        const pastedText = editor.getModel().getValueInRange(e.range);
+        
+        sessionData.tasks[currentTaskIndex].events.pastes.push({
+            length: pastedText.length,
+            content: pastedText, // Now you actually get the cheated code!
+            timestamp: Date.now()
+        });
+        
+        console.log(`[Telemetry] Captured paste of ${pastedText.length} characters.`);
+    });
 });
 
 // Toast Notification System
@@ -187,11 +222,17 @@ function attachTelemetryListeners() {
         });
     });
 
-    document.addEventListener('paste', (e) => {
-        const pastedText = (e.clipboardData || window.clipboardData).getData('text');
-        sessionData.tasks[currentTaskIndex].events.pastes.push({
-            length: pastedText.length,
-            content: pastedText,
+    window.addEventListener('blur', () => {
+        sessionData.tasks[currentTaskIndex].events.focusEvents.push({
+            action: "lost_focus",
+            timestamp: Date.now()
+        });
+    });
+
+    // Tracks when they return to your application
+    window.addEventListener('focus', () => {
+        sessionData.tasks[currentTaskIndex].events.focusEvents.push({
+            action: "gained_focus",
             timestamp: Date.now()
         });
     });
@@ -339,12 +380,74 @@ btnConfirm.addEventListener('click', async (e) => {
     btnCancel.disabled = true;
 
     clearInterval(autoSaveInterval);
-    sessionData.metadata.group = document.getElementById('experiment-group').value;
+    if (typeof timerInterval !== 'undefined') clearInterval(timerInterval);
     
+    // Close out timestamps and code
     sessionData.tasks[currentTaskIndex].endTime = Date.now();
-    sessionData.tasks[currentTaskIndex].finalCode = editor.getValue();
+    if (editor) {
+        sessionData.tasks[currentTaskIndex].finalCode = editor.getValue();
+    }
     sessionData.metadata.globalEndTime = Date.now();
     
     await saveProgressToServer("final");
-    window.location.href = "thank_you.html";
+
+    window.removeEventListener('beforeunload', preventNavigation);
+    // Drop a permanent lock in local storage
+    localStorage.setItem('sessionCompleted', 'true');
+
+    // Replace the current history state so they can't hit "Back"
+    window.location.replace("thank_you.html");
 });
+
+// ==========================================
+// 6. GLOBAL COUNTDOWN TIMER
+// ==========================================
+let timeRemaining = 20 * 60; // 20 minutes in seconds
+let timerInterval;
+
+function startGlobalTimer() {
+    const timerDisplay = document.getElementById('timer-display');
+    
+    timerInterval = setInterval(async () => {
+        timeRemaining--;
+        
+        // Calculate minutes and seconds
+        const minutes = Math.floor(timeRemaining / 60);
+        const seconds = timeRemaining % 60;
+        
+        // Format to always show two digits (e.g., 09:05)
+        timerDisplay.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        
+        // Visual Warning at 2 minutes remaining
+        if (timeRemaining === 120) {
+            timerDisplay.style.color = "var(--danger)";
+            showToast("Only 2 minutes remaining!", "error");
+        }
+
+        // TIME IS UP!
+        if (timeRemaining <= 0) {
+            clearInterval(timerInterval);
+            clearInterval(autoSaveInterval);
+            
+            showToast("Time is up! Auto-submitting your session...", "error");
+            
+            // 1. Lock the UI so they can't type anymore
+            document.getElementById('editor-container').style.pointerEvents = 'none';
+            document.querySelector('.btn-group').style.pointerEvents = 'none';
+            
+            // 2. Finalize timestamps and data
+            sessionData.tasks[currentTaskIndex].endTime = Date.now();
+            if (editor) {
+                sessionData.tasks[currentTaskIndex].finalCode = editor.getValue();
+            }
+            sessionData.metadata.globalEndTime = Date.now();
+            
+            // Flag that this was a forced timeout, not a normal submission
+            sessionData.metadata.status = "time_expired"; 
+            
+            // 3. Save to server and redirect
+            await saveProgressToServer("final");
+            window.location.href = "thank_you.html";
+        }
+    }, 1000); // Run every 1000ms (1 second)
+}
