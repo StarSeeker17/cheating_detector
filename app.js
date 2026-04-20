@@ -33,23 +33,44 @@ window.onpopstate = function () {
 // Define the two challenges and their specific Pyodide test scripts
 const challenges = [
     {
-        id: "task_1_reversal",
-        title: "Challenge 1: String Reversal",
+        id: "task_1_blackjack",
+        title: "Challenge 1: Calculate the value of a blackjack hand",
         description: `
-            <p>Write a Python function named <code>reverse_string(s)</code> that takes a string as input and returns the string reversed.</p>
+            <h4>Problem Description</h4>
+            <p>Write a Python function named <code>calculate_hand_value(cards)</code> that calculates the total value of a blackjack hand. Card ranks are: 2-9, 10, J, Q, K, A.</p>
+            <p><strong>Scoring rules:</strong></p>
             <ul>
-                <li>Do not use the built-in <code>[::-1]</code> slicing trick.</li>
-                <li>Use a loop to construct the new string.</li>
-            </ul>`,
-        starterCode: "def reverse_string(s):\n    # Write your logic here\n    pass",
+                <li>Number cards (2-9) are worth their face value</li>
+                <li>10 and face cards (J, Q, K) are worth 10</li>
+                <li>Ace (A) is worth 1 or 11 depending on the hand - use 11 if possible without exceeding 21, otherwise use 1</li>
+            </ul>
+            
+            <h4>Input</h4>
+            <p>A list of card rank strings. The hand will contain between 1 and 5 cards. Example: <code>["2", "K", "A"]</code></p>
+            
+            <h4>Output</h4>
+            <p>An integer representing the total value of the hand.</p>
+            
+            <h4>Example</h4>
+            <p><code>calculate_hand_value(["A", "9"])</code> should return <code>20</code></p>
+        `,
+        starterCode: "def calculate_hand_value(cards):\n    # Write your logic here\n    pass",
         testCases: `
 import json
-test_cases = [("hello", "olleh"), ("cyber", "rebyc"), ("12345", "54321")]
+test_cases = [
+    (["2", "3"], 5),
+    (["K", "Q", "J"], 30),
+    (["A", "9"], 20),
+    (["10", "5", "4"], 19),
+    (["K", "Q", "A"], 21),
+    (["A", "K", "Q"], 21),
+    (["A", "A", "9"], 21)
+]
 passed = 0
 results = []
 for i, (input_val, expected) in enumerate(test_cases):
     try:
-        actual = reverse_string(input_val)
+        actual = calculate_hand_value(input_val)
         if actual == expected:
             passed += 1
             results.append({"test": i + 1, "status": "PASS", "expected": expected, "got": actual})
@@ -64,21 +85,38 @@ print(json.dumps({"passed": passed, "total": len(test_cases), "details": results
         id: "task_2_fizzbuzz",
         title: "Challenge 2: FizzBuzz Logic",
         description: `
-            <p>Write a function <code>fizzbuzz(n)</code> that returns a list of numbers from 1 to n, but:</p>
+            <h4>Problem Description</h4>
+            <p>Write a function <code>fizzbuzz(n, divisor1, divisor2, word1, word2)</code> that returns a list of numbers from 1 to n, with special rules for multiples:</p>
             <ul>
-                <li>Multiples of 3 are replaced with "Fizz"</li>
-                <li>Multiples of 5 are replaced with "Buzz"</li>
-                <li>Multiples of both are replaced with "FizzBuzz"</li>
-            </ul>`,
-        starterCode: "def fizzbuzz(n):\n    # Write your logic here\n    pass",
+                <li>Multiples of <code>divisor1</code> are replaced with <code>word1</code></li>
+                <li>Multiples of <code>divisor2</code> are replaced with <code>word2</code></li>
+                <li>Multiples of both divisors are replaced with <code>word1 + word2</code> (concatenated)</li>
+            </ul>
+            
+            <h4>Input</h4>
+            <p>An integer <code>n</code> representing the upper limit (inclusive), two integers <code>divisor1</code> and <code>divisor2</code>, and two strings <code>word1</code> and <code>word2</code>.</p>
+            
+            <h4>Output</h4>
+            <p>A list containing integers and strings according to the FizzBuzz rules.</p>
+            
+            <h4>Example</h4>
+            <p><code>fizzbuzz(5, 3, 5, "Fizz", "Buzz")</code> should return <code>[1, 2, 'Fizz', 4, 'Buzz']</code></p>
+        `,
+        starterCode: "def fizzbuzz(n, divisor1, divisor2, word1, word2):\n    # Write your logic here\n    pass",
         testCases: `
 import json
-test_cases = [(5, [1, 2, 'Fizz', 4, 'Buzz']), (15, [1, 2, 'Fizz', 4, 'Buzz', 'Fizz', 7, 8, 'Fizz', 'Buzz', 11, 'Fizz', 13, 14, 'FizzBuzz'])]
+test_cases = [
+    (5, 3, 5, "Fizz", "Buzz", [1, 2, 'Fizz', 4, 'Buzz']),
+    (15, 3, 5, "Fizz", "Buzz", [1, 2, 'Fizz', 4, 'Buzz', 'Fizz', 7, 8, 'Fizz', 'Buzz', 11, 'Fizz', 13, 14, 'FizzBuzz']),
+    (10, 2, 3, "Even", "Three", [1, 'Even', 'Three', 'Even', 5, 'EvenThree', 7, 'Even', 'Three', 'Even']),
+    (7, 2, 4, "Foo", "Bar", [1, 'Foo', 3, 'FooBar', 5, 'Foo', 7]),
+    (12, 3, 4, "X", "Y", [1, 2, 'X', 'Y', 5, 'X', 7, 'Y', 'X', 10, 11, 'XY'])
+]
 passed = 0
 results = []
-for i, (input_val, expected) in enumerate(test_cases):
+for i, (n, d1, d2, w1, w2, expected) in enumerate(test_cases):
     try:
-        actual = fizzbuzz(input_val)
+        actual = fizzbuzz(n, d1, d2, w1, w2)
         if actual == expected:
             passed += 1
             results.append({"test": i + 1, "status": "PASS", "expected": str(expected), "got": str(actual)})
@@ -136,11 +174,11 @@ function loadTaskUI(index) {
     if (condition === "HONEST") {
         banner.style.backgroundColor = "rgba(16, 185, 129, 0.2)";
         banner.style.color = "#10b981";
-        banner.innerText = "🛡️ HONEST CONDITION: Solve this entirely from your own memory. Do not switch tabs or copy code.";
+        banner.innerText = "HONEST CHALLENGE: Solve this using entirely your own knowledge. Do not switch tabs or copy code.";
     } else {
         banner.style.backgroundColor = "rgba(239, 68, 68, 0.2)";
         banner.style.color = "#ef4444";
-        banner.innerText = "🤖 CHEAT CONDITION: Solve this as fast as possible using ChatGPT, Google, or copy-pasting.";
+        banner.innerText = "DISHONEST CHALLENGE: Use everything at your disposal to solve this challenge. PLEASE CHEAT!";
     }
 
     if (editor) editor.setValue(task.starterCode);
