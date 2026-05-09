@@ -249,28 +249,31 @@ function attachTelemetryListeners() {
     
     document.addEventListener('keydown', (e) => {
         
-        // 1. Format combinations explicitly (ignore if they just press 'Control' by itself)
+        // 1. ADD THE KEY TO THE TRACKER SET! (This fixes the false alarms)
+        keysCurrentlyDown.add(e.key.toLowerCase());
+
+        // 2. Format combinations explicitly
         let keyName = e.key;
 
         if (!['Control', 'Alt', 'Shift', 'Meta'].includes(keyName)) {
             let modifiers = [];
 
-            // Check which modifiers were held down during this keypress
             if (e.ctrlKey) modifiers.push('Control');
-            if (e.metaKey) modifiers.push('Cmd'); // For Mac users
+            if (e.metaKey) modifiers.push('Cmd'); 
             if (e.altKey) modifiers.push('Alt');
             if (e.shiftKey) modifiers.push('Shift');
 
-            // If modifiers exist, stitch them together (e.g., "Control+Shift+b")
             if (modifiers.length > 0) {
                 keyName = modifiers.join('+') + '+' + keyName.toLowerCase();
             }
         }
 
+        // 3. Push the FORMATTED keyName, not e.key!
         sessionData.tasks[currentTaskIndex].events.keystrokes.push({
-            key: e.key,
+            key: keyName, 
             timestamp: Date.now()
         });
+        
     }, { capture: true });
 
     // THE NEW TRAP: Listen for keys coming UP
