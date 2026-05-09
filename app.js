@@ -245,34 +245,80 @@ function appendLog(div, msg, colorClass) {
 function attachTelemetryListeners() {
     // Note: We push everything to sessionData.tasks[currentTaskIndex].events
     
+    const keysCurrentlyDown = new Set();
+    
     document.addEventListener('keydown', (e) => {
+        
+        // 1. Format combinations explicitly (ignore if they just press 'Control' by itself)
+        let keyName = e.key;
+
+        if (!['Control', 'Alt', 'Shift', 'Meta'].includes(keyName)) {
+            let modifiers = [];
+
+            // Check which modifiers were held down during this keypress
+            if (e.ctrlKey) modifiers.push('Control');
+            if (e.metaKey) modifiers.push('Cmd'); // For Mac users
+            if (e.altKey) modifiers.push('Alt');
+            if (e.shiftKey) modifiers.push('Shift');
+
+            // If modifiers exist, stitch them together (e.g., "Control+Shift+b")
+            if (modifiers.length > 0) {
+                keyName = modifiers.join('+') + '+' + keyName.toLowerCase();
+            }
+        }
+
         sessionData.tasks[currentTaskIndex].events.keystrokes.push({
             key: e.key,
             timestamp: Date.now()
         });
-    });
+    }, { capture: true });
+
+    // THE NEW TRAP: Listen for keys coming UP
+    document.addEventListener('keyup', (e) => {
+        const keyUpName = e.key.toLowerCase();
+
+        // Did a key just come up that we never saw go down?
+        if (!keysCurrentlyDown.has(keyUpName)) {
+
+            // Exclude standard modifiers from this trap, as alt-tabbing can mess with them
+            if (!['control', 'alt', 'shift', 'meta'].includes(keyUpName)) {
+
+                // WE CAUGHT THEM! Log an OS-Hook anomaly event.
+                sessionData.tasks[currentTaskIndex].events.keystrokes.push({
+                    key: `HOOK_DETECTED_${e.key}`, 
+                    timestamp: Date.now()
+                });
+                console.warn(`OS Hook Anomaly: Missing keydown for ${e.key}`);
+            }
+        }
+
+        // Clean up the set when the key is released
+        keysCurrentlyDown.delete(keyUpName);
+
+    }, { capture: true });
 
     document.addEventListener('click', (e) => {
-        sessionData.tasks[currentTaskIndex].events.clicks.push({
-            x: e.clientX, y: e.clientY,
-            target: e.target.tagName,
-            timestamp: Date.now()
-        });
+    sessionData.tasks[currentTaskIndex].events.clicks.push({
+        x: e.clientX, y: e.clientY,
+        target: e.target.tagName,
+        timestamp: Date.now()
+    });
     });
 
     window.addEventListener('blur', () => {
-        sessionData.tasks[currentTaskIndex].events.focusEvents.push({
-            action: "lost_focus",
-            timestamp: Date.now()
-        });
+        keysCurrentlyDown.clear();
+    sessionData.tasks[currentTaskIndex].events.focusEvents.push({
+        action: "lost_focus",
+        timestamp: Date.now()
+    });
     });
 
     // Tracks when they return to your application
     window.addEventListener('focus', () => {
-        sessionData.tasks[currentTaskIndex].events.focusEvents.push({
-            action: "gained_focus",
-            timestamp: Date.now()
-        });
+    sessionData.tasks[currentTaskIndex].events.focusEvents.push({
+        action: "gained_focus",
+        timestamp: Date.now()
+    });
     });
 }
 
