@@ -34,7 +34,8 @@ window.onpopstate = function () {
 const challenges = [
     {
         id: "task_1_blackjack",
-        title: "Challenge 1: Calculate the value of a blackjack hand",
+        title: "Challenge: Calculate the value of a blackjack hand",
+        totalTests: 7,
         description: `
             <h4>Problem Description</h4>
             <p>Write a Python function named <code>calculate_hand_value(cards)</code> that calculates the total value of a blackjack hand. Card ranks are: 2-9, 10, J, Q, K, A.</p>
@@ -83,7 +84,8 @@ print(json.dumps({"passed": passed, "total": len(test_cases), "details": results
     },
     {
         id: "task_2_fizzbuzz",
-        title: "Challenge 2: FizzBuzz Logic",
+        title: "Challenge: FizzBuzz Logic",
+        totalTests: 5,
         description: `
             <h4>Problem Description</h4>
             <p>Write a function <code>fizzbuzz(n, divisor1, divisor2, word1, word2)</code> that returns a list of numbers from 1 to n, with special rules for multiples:</p>
@@ -129,12 +131,13 @@ print(json.dumps({"passed": passed, "total": len(test_cases), "details": results
     }
 ];
 
-// Randomize condition (50/50)
-const task1IsHonest = Math.random() < 0.5;
-const assignedConditions = [
-    task1IsHonest ? "HONEST" : "CHEAT",
-    task1IsHonest ? "CHEAT" : "HONEST"
-];
+// 1. Randomize the Challenges (50% chance to swap their order)
+const shuffledChallenges = Math.random() < 0.5 
+    ? [challenges[0], challenges[1]] 
+    : [challenges[1], challenges[0]];
+
+// 2. Hardcode the Conditions (Task 1 is CHEAT, Task 2 is HONEST)
+const assignedConditions = ["CHEAT", "HONEST"];
 
 let currentTaskIndex = 0;
 
@@ -148,14 +151,14 @@ const sessionData = {
     },
     tasks: [
         { 
-            id: challenges[0].id, condition: assignedConditions[0], 
+            id: shuffledChallenges[0].id, condition: assignedConditions[0], totalTests: shuffledChallenges[0].totalTests,
             startTime: Date.now(), endTime: null, finalCode: "", 
-            events: { keystrokes: [], clicks: [], pastes: [], executions: [], focusEvents: [] } 
+            events: { keystrokes: [], clicks: [], selections: [], pastes: [], executions: [], focusEvents: [] } 
         },
         { 
-            id: challenges[1].id, condition: assignedConditions[1], 
+            id: shuffledChallenges[1].id, condition: assignedConditions[1], totalTests: shuffledChallenges[1].totalTests,
             startTime: null, endTime: null, finalCode: "", 
-            events: { keystrokes: [], clicks: [], pastes: [], executions: [], focusEvents: [] } 
+            events: { keystrokes: [], clicks: [], selections: [], pastes: [], executions: [], focusEvents: [] } 
         }
     ]
 };
@@ -164,7 +167,7 @@ const sessionData = {
 // 2. UI & EDITOR INITIALIZATION
 // ==========================================
 function loadTaskUI(index) {
-    const task = challenges[index];
+    const task = shuffledChallenges[index];
     const condition = assignedConditions[index];
 
     document.getElementById('task-title').innerText = task.title;
@@ -250,7 +253,7 @@ function attachTelemetryListeners() {
     document.addEventListener('keydown', (e) => {
         
         // 1. ADD THE KEY TO THE TRACKER SET! (This fixes the false alarms)
-        keysCurrentlyDown.add(e.key.toLowerCase());
+        keysCurrentlyDown.add(e.code.toLowerCase());
 
         // 2. Format combinations explicitly
         let keyName = e.key;
@@ -276,44 +279,176 @@ function attachTelemetryListeners() {
         
     }, { capture: true });
 
-    // THE NEW TRAP: Listen for keys coming UP
+    // THE NEW TRAP: Listen for physical keys coming UP
     document.addEventListener('keyup', (e) => {
-        const keyUpName = e.key.toLowerCase();
+        // 1. Check the physical hardware code!
+        const physicalCode = e.code.toLowerCase();
 
-        // Did a key just come up that we never saw go down?
-        if (!keysCurrentlyDown.has(keyUpName)) {
+        // Did a physical key just come up that we never saw go down?
+        if (!keysCurrentlyDown.has(physicalCode)) {
 
-            // Exclude standard modifiers from this trap, as alt-tabbing can mess with them
-            if (!['control', 'alt', 'shift', 'meta'].includes(keyUpName)) {
+            // Exclude standard modifiers using their e.code names
+            if (!['controlleft', 'controlright', 'altleft', 'altright', 'shiftleft', 'shiftright', 'metaleft', 'metaright'].includes(physicalCode)) {
 
                 // WE CAUGHT THEM! Log an OS-Hook anomaly event.
+                // We still log e.key so Python knows what character it was!
                 sessionData.tasks[currentTaskIndex].events.keystrokes.push({
                     key: `HOOK_DETECTED_${e.key}`, 
                     timestamp: Date.now()
                 });
-                console.warn(`OS Hook Anomaly: Missing keydown for ${e.key}`);
+                console.warn(`OS Hook Anomaly: Missing keydown for ${e.key} (Code: ${e.code})`);
             }
         }
 
-        // Clean up the set when the key is released
-        keysCurrentlyDown.delete(keyUpName);
+        // Clean up the set using the physical code
+        keysCurrentlyDown.delete(physicalCode);
 
     }, { capture: true });
 
     document.addEventListener('click', (e) => {
-    sessionData.tasks[currentTaskIndex].events.clicks.push({
-        x: e.clientX, y: e.clientY,
-        target: e.target.tagName,
-        timestamp: Date.now()
-    });
+    
+        let clickRegion = "other"; // Default fallback
+
+        // For example, Monaco Editor often uses '.monaco-editor', CodeMirror uses '.CodeMirror'
+        if (!e.isTrusted) {
+            // This click was generated by software, not a human finger.
+            sessionData.tasks[currentTaskIndex].events.clicks.push({
+                action: "HOOK_CLICK_DETECTED",
+                x: e.clientX,
+                y: e.clientY,
+                timestamp: Date.now()
+            });
+            console.warn("OS Hook Anomaly: Untrusted click detected.");
+        }
+
+        if (e.target.closest('#editor-container')) {
+            clickRegion = "editor";
+        } 
+        else if (e.target.closest('#task-description')) {
+            clickRegion = "challenge_text";
+        }
+        else if (e.target.closest('#next-btn')) {
+            clickRegion = "next_button";
+        }
+        else if (e.target.closest('#run-btn')) {
+            clickRegion = "run_button";
+        }
+        else if (e.target.closest('#submit-btn')) {
+            clickRegion = "submit_button";
+        }
+        else if (e.target.closest('#consoleDiv')) {
+            clickRegion = "console";
+        }
+
+        sessionData.tasks[currentTaskIndex].events.clicks.push({
+            x: e.clientX, 
+            y: e.clientY,
+            target: e.target.tagName,
+            region: clickRegion, // <--- Your new high-signal data point!
+            timestamp: Date.now()
+        });
+    }); 
+
+    // Listen for when they release the mouse button
+    document.addEventListener('mouseup', (e) => {
+    
+        // Grab whatever text is currently highlighted on the screen
+        const selectedText = window.getSelection().toString().trim();
+
+        // If the string is empty, they just did a normal click. 
+        // If it has length, they highlighted something!
+        if (selectedText.length > 0) {
+
+            let clickRegion = "other";
+
+            // Reuse your region logic to know WHERE they highlighted the text!
+            if (e.target.closest('#editor-container')) {
+            clickRegion = "editor";
+            } 
+            else if (e.target.closest('#task-desc')) {
+                clickRegion = "challenge_text";
+            }
+            else if (e.target.closest('#next-btn')) {
+                clickRegion = "next_button";
+            }
+            else if (e.target.closest('#run-btn')) {
+                clickRegion = "run_button";
+            }
+            else if (e.target.closest('#submit-btn')) {
+                clickRegion = "submit_button";
+            }
+            else if (e.target.closest('#consoleDiv')) {
+                clickRegion = "console";
+            }
+
+            // Push to a new "selections" array in your telemetry
+            sessionData.tasks[currentTaskIndex].events.selections.push({
+                text: selectedText,
+                length: selectedText.length,
+                region: clickRegion,
+                timestamp: Date.now()
+            });
+
+            console.log(`User highlighted ${selectedText.length} chars in the ${clickRegion}`);
+        }
     });
 
+    // THE DRAG-AND-DROP TRAP
+    document.addEventListener('drop', (e) => {
+        // 1. Extract the text that is being dropped into the window
+        const droppedText = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text');
+
+        // 2. If there is actual text, log it as a paste
+        if (droppedText && droppedText.length > 0) {
+
+            sessionData.tasks[currentTaskIndex].events.pastes.push({
+                timestamp: Date.now(),
+                length: droppedText.length, 
+            });
+
+            console.warn(`Drop Anomaly: ${droppedText.length} characters injected via drag-and-drop.`);
+        }
+    }, { capture: true });
+
+    let overlayTrapTimer = null;
+    let lastFocusLossTime = 0;
+
+    // EVENT 1: They clicked away
     window.addEventListener('blur', () => {
+        lastFocusLossTime = Date.now();
         keysCurrentlyDown.clear();
-    sessionData.tasks[currentTaskIndex].events.focusEvents.push({
-        action: "lost_focus",
-        timestamp: Date.now()
+
+        // Start the trap countdown (300ms)
+        overlayTrapTimer = setTimeout(() => {
+            // If this code actually executes, it means 'visibilitychange' NEVER fired to cancel it.
+            // Ergo, the page is still visibly sitting on their screen.
+            if (document.visibilityState === 'visible') {
+                sessionData.tasks[currentTaskIndex].events.focusEvents.push({
+                    action: "lost_focus_to_overlay",
+                    timestamp: lastFocusLossTime 
+                });
+                console.warn("Overlay/Dual-Monitor Anomaly: Focus lost but page remained visible.");
+            }
+        }, 300); 
     });
+
+    // EVENT 2: The browser confirms the tab is actually hidden
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            
+            // 1. CANCEL THE TRAP! It was a legitimate tab switch.
+            if (overlayTrapTimer) {
+                clearTimeout(overlayTrapTimer);
+                overlayTrapTimer = null;
+            }
+
+            // 2. Log it as a normal, honest tab switch
+            sessionData.tasks[currentTaskIndex].events.focusEvents.push({
+                action: "lost_focus",
+                timestamp: lastFocusLossTime || Date.now()
+            });
+            console.log("Normal Tab Switch: Focus lost and page was hidden.");
+        }
     });
 
     // Tracks when they return to your application
@@ -534,6 +669,10 @@ function startGlobalTimer() {
             
             // 3. Save to server and redirect
             await saveProgressToServer("final");
+            
+            // THE FIX: Kill the browser's warning prompt so we can force them out
+            window.onbeforeunload = null; 
+            
             window.location.href = "thank_you.html";
         }
     }, 1000); // Run every 1000ms (1 second)
