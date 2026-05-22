@@ -470,7 +470,7 @@ function runUnitTestsSecurely() {
     consoleDiv.innerHTML = "<span class='normal'>Booting Python environment...</span>\n";
     
     const userCode = editor.getValue();
-    const currentTests = challenges[currentTaskIndex].testCases;
+    const currentTests = shuffledChallenges[currentTaskIndex].testCases;
     
     // Record execution attempt
     const executionRecord = { timestamp: Date.now(), codeState: userCode, status: "pending", testsPassed: 0 };
