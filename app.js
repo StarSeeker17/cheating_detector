@@ -248,19 +248,20 @@ function appendLog(div, msg, colorClass) {
 function attachTelemetryListeners() {
     // Note: We push everything to sessionData.tasks[currentTaskIndex].events
     
-    const keysCurrentlyDown = new Set();
-    
     document.addEventListener('keydown', (e) => {
+        const timestamp = Date.now();
+
+        // ==========================================
+        // PART 1: GLOBAL KEYSTROKE TRACKING & FORMATTING
+        // ==========================================
         
-        // 1. ADD THE KEY TO THE TRACKER SET! (This fixes the false alarms)
+        // 1. Add the key to the tracker set
         keysCurrentlyDown.add(e.code.toLowerCase());
 
         // 2. Format combinations explicitly
         let keyName = e.key;
-
         if (!['Control', 'Alt', 'Shift', 'Meta'].includes(keyName)) {
             let modifiers = [];
-
             if (e.ctrlKey) modifiers.push('Control');
             if (e.metaKey) modifiers.push('Cmd'); 
             if (e.altKey) modifiers.push('Alt');
@@ -271,12 +272,39 @@ function attachTelemetryListeners() {
             }
         }
 
-        // 3. Push the FORMATTED keyName, not e.key!
+        // 3. Push the FORMATTED keyName to the keystrokes array
         sessionData.tasks[currentTaskIndex].events.keystrokes.push({
             key: keyName, 
-            timestamp: Date.now()
+            timestamp: timestamp
         });
-        
+
+        // ==========================================
+        // PART 2: THE "MASS DELETE" TRAP
+        // ==========================================
+
+        // 4. Check if they have text highlighted
+        const selectedText = window.getSelection().toString().trim();
+
+        if (selectedText.length > 0) {
+            // Flag 1: Are they just pressing a modifier key alone?
+            const isModifierOnly = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key);
+
+            // Flag 2: Are they pressing a native copy/cut shortcut?
+            const isCopyOrCut = (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x');
+
+            // If they pressed a destructive/overwrite key, log the mass delete!
+            if (!isModifierOnly && !isCopyOrCut) {
+                sessionData.tasks[currentTaskIndex].events.keystrokes.push({
+                    type: "MassDelete",
+                    length: selectedText.length,
+                    trigger_key: keyName, // Using your nice formatted keyName here!
+                    timestamp: timestamp
+                });
+
+                console.log(`[MASS DELETE] ${selectedText.length} chars destroyed via '${keyName}'`);
+            }
+        }
+
     }, { capture: true });
 
     // THE NEW TRAP: Listen for physical keys coming UP
@@ -349,47 +377,18 @@ function attachTelemetryListeners() {
         });
     }); 
 
-    // Listen for when they release the mouse button
-    document.addEventListener('mouseup', (e) => {
-    
-        // Grab whatever text is currently highlighted on the screen
+    document.addEventListener('copy', (e) => {
         const selectedText = window.getSelection().toString().trim();
-
-        // If the string is empty, they just did a normal click. 
-        // If it has length, they highlighted something!
         if (selectedText.length > 0) {
+            logAction("copy", selectedText);
+        }
+    });
 
-            let clickRegion = "other";
-
-            // Reuse your region logic to know WHERE they highlighted the text!
-            if (e.target.closest('#editor-container')) {
-            clickRegion = "editor";
-            } 
-            else if (e.target.closest('#task-desc')) {
-                clickRegion = "challenge_text";
-            }
-            else if (e.target.closest('#next-btn')) {
-                clickRegion = "next_button";
-            }
-            else if (e.target.closest('#run-btn')) {
-                clickRegion = "run_button";
-            }
-            else if (e.target.closest('#submit-btn')) {
-                clickRegion = "submit_button";
-            }
-            else if (e.target.closest('#consoleDiv')) {
-                clickRegion = "console";
-            }
-
-            // Push to a new "selections" array in your telemetry
-            sessionData.tasks[currentTaskIndex].events.selections.push({
-                text: selectedText,
-                length: selectedText.length,
-                region: clickRegion,
-                timestamp: Date.now()
-            });
-
-            console.log(`User highlighted ${selectedText.length} chars in the ${clickRegion}`);
+    // This catches Ctrl+X, Cmd+X, AND Right-Click -> Cut
+    document.addEventListener('cut', (e) => {
+        const selectedText = window.getSelection().toString().trim();
+        if (selectedText.length > 0) {
+            logAction("cut", selectedText); // Cut is basically a Copy + Mass Delete
         }
     });
 
