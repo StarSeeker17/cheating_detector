@@ -153,12 +153,12 @@ const sessionData = {
         { 
             id: shuffledChallenges[0].id, condition: assignedConditions[0], totalTests: shuffledChallenges[0].totalTests,
             startTime: Date.now(), endTime: null, finalCode: "", 
-            events: { keystrokes: [], clicks: [], selections: [], pastes: [], executions: [], focusEvents: [] } 
+            events: { keystrokes: [], clicks: [], copies: [], cuts: [], pastes: [], executions: [], focusEvents: [] } 
         },
         { 
             id: shuffledChallenges[1].id, condition: assignedConditions[1], totalTests: shuffledChallenges[1].totalTests,
             startTime: null, endTime: null, finalCode: "", 
-            events: { keystrokes: [], clicks: [], selections: [], pastes: [], executions: [], focusEvents: [] } 
+            events: { keystrokes: [], clicks: [], copies: [], cuts: [], pastes: [], executions: [], focusEvents: [] } 
         }
     ]
 };
@@ -242,6 +242,8 @@ function appendLog(div, msg, colorClass) {
     div.appendChild(span);
 }
 
+const keysCurrentlyDown = new Set();
+
 // ==========================================
 // 3. TELEMETRY COLLECTION
 // ==========================================
@@ -286,18 +288,21 @@ function attachTelemetryListeners() {
         const selectedText = window.getSelection().toString().trim();
 
         if (selectedText.length > 0) {
-            // Flag 1: Are they just pressing a modifier key alone?
-            const isModifierOnly = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key);
+            
+            // Scenario A: They pressed a key explicitly meant for deletion or new lines
+            const isExplicitDelete = ['Backspace', 'Delete', 'Enter'].includes(e.key);
+            
+            // Scenario B: They typed a normal character to overwrite the highlighted text.
+            // e.key.length === 1 captures all letters, numbers, and symbols.
+            // We MUST ensure Ctrl/Meta are false so we don't accidentally catch Ctrl+A or Ctrl+C!
+            const isTypingOverwrite = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
 
-            // Flag 2: Are they pressing a native copy/cut shortcut?
-            const isCopyOrCut = (e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x');
-
-            // If they pressed a destructive/overwrite key, log the mass delete!
-            if (!isModifierOnly && !isCopyOrCut) {
+            // If it is a confirmed destructive action, log it!
+            if (isExplicitDelete || isTypingOverwrite) {
                 sessionData.tasks[currentTaskIndex].events.keystrokes.push({
-                    type: "MassDelete",
+                    key: "MassDelete",
                     length: selectedText.length,
-                    trigger_key: keyName, // Using your nice formatted keyName here!
+                    trigger_key: keyName, 
                     timestamp: timestamp
                 });
 
@@ -377,18 +382,65 @@ function attachTelemetryListeners() {
         });
     }); 
 
+    // ==========================================
+    // 3. CLIPBOARD EXFILTRATION TRAPS
+    // ==========================================
+    
     document.addEventListener('copy', (e) => {
-        const selectedText = window.getSelection().toString().trim();
-        if (selectedText.length > 0) {
-            logAction("copy", selectedText);
+        try {
+            const selectedText = window.getSelection().toString().trim();
+            if (selectedText.length > 0) {
+                // Determine WHERE they copied from
+                let copyRegion = "editor";
+                let targetNode = window.getSelection().anchorNode;
+                
+                if (targetNode && targetNode.nodeType === 3) {
+                    targetNode = targetNode.parentElement;
+                }
+                
+                // If they copied the question, tag it for Agent 2's Prompt Farmer trap!
+                if (targetNode && targetNode.closest('#task-desc')) {
+                    copyRegion = "challenge_text";
+                }
+
+                sessionData.tasks[currentTaskIndex].events.copies.push({
+                    text: selectedText,
+                    region: copyRegion,
+                    timestamp: Date.now()
+                });
+
+                console.log(`[COPY] ${selectedText.length} chars from ${copyRegion}`);
+            }
+        } catch (error) {
+            console.error("Telemetry Error in copy listener:", error);
         }
     });
 
-    // This catches Ctrl+X, Cmd+X, AND Right-Click -> Cut
     document.addEventListener('cut', (e) => {
-        const selectedText = window.getSelection().toString().trim();
-        if (selectedText.length > 0) {
-            logAction("cut", selectedText); // Cut is basically a Copy + Mass Delete
+        try {
+            const selectedText = window.getSelection().toString().trim();
+            if (selectedText.length > 0) {
+                const timestamp = Date.now();
+                
+                // 1. Log it to the Cuts array (so Agent 1 knows what is on the internal clipboard)
+                sessionData.tasks[currentTaskIndex].events.cuts.push({
+                    text: selectedText,
+                    region: "editor", // Cuts basically only happen inside the editable area
+                    timestamp: timestamp
+                });
+
+                // 2. Log it to Keystrokes as a MassDelete (so Agent 1's deletion math stays perfect)
+                sessionData.tasks[currentTaskIndex].events.keystrokes.push({
+                    key: "MassDelete",
+                    length: selectedText.length,
+                    trigger_key: "Cut", // Explicitly note that a cut triggered this deletion
+                    timestamp: timestamp
+                });
+
+                console.log(`[CUT] ${selectedText.length} chars removed and copied to clipboard.`);
+            }
+        } catch (error) {
+            console.error("Telemetry Error in cut listener:", error);
         }
     });
 
